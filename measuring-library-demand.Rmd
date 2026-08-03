@@ -1,0 +1,851 @@
+--- 
+title: "Measuring Library Demand: A Novel Data-Driven Library Demand Index and Its Predictors" 
+subtitle: "R Code"
+author: "Noémi Erika Békésiné Bognár, László Kovács"
+date: "August 3, 2026"
+output:
+  html_document:
+    toc: true
+    toc_float: true
+    number_sections: true
+    df_print: paged
+    self_contained: true
+---
+
+# PREPARATIONS
+
+## Set the working directory
+
+```{r setup, include=FALSE}
+knitr::opts_knit$set(root.dir = "C:/tobbvaltozos")
+
+knitr::opts_chunk$set(
+  warning = FALSE,
+  message = FALSE
+)  
+```
+
+## Install and load the required packages
+
+```{r}
+#install.packages("readxl")
+library(readxl)
+
+#install.packages("writexl")
+library(writexl)
+
+#install.packages("ggplot2")
+library(ggplot2)
+
+#install.packages("GGally")
+library(GGally)
+
+#install.packages("psych")
+library(psych)
+
+#install.packages("factoextra")
+library(factoextra)
+
+#install.packages("lmtest")
+library(lmtest)
+
+#install.packages("car")
+library(car)
+
+#install.packages("MASS")
+library(MASS)
+
+#install.packages("performance")
+library(performance) 
+
+#install.packages("dplyr")
+library(dplyr)
+```
+
+## Import the cleaned public library statistical dataset for 2022
+
+```{r}
+elemzes_input_output_cleaned <- read_excel("elemzes_input_output_cleaned.xlsx", sheet = 1)
+```
+
+Convert data types
+
+```{r}
+elemzes_input_output_cleaned <- data.frame(lapply(elemzes_input_output_cleaned, function(x) {
+  if (is.matrix(x) || is.array(x)) as.numeric(x) else x
+}))
+```
+
+## Dataset structure
+
+### Basic variables
+
+- **ID10 (character)**: library identifier
+- **AAA10 (character)**: library name
+- **AIF40 (character)**: library type
+- **AIF50 (character)**: library type 2
+- **AAC10 (character)**: municipality of the reporting library
+- **TAB00 (character)**: settlement category
+- **HNT (numeric)**: population
+- **TAC00 (character)**: county
+- **HNT_J (character)**: district
+- **osszevont (numeric)**: merged institution 
+
+### Input variables
+
+- **IP1 (numeric, log scale)**: Library funding: level of library expenditure per capita (total expenditure / population)
+- **IP2 (numeric, log scale)**: Share of document acquisition in total expenditure (collection development expenditure based on paid invoices / total expenditure)
+- **IP3 (numeric, log scale)**: Acquisition quota: collection development expenditure per capita (collection development expenditure based on paid invoices / population)
+- **IL1 (numeric, log scale)**: Floor area provision: user space per capita (area of spaces visited and used by users (m²) / population)
+- **IL2 (numeric)**: Number of opening hours in an average week
+- **IK1 (numeric, log scale)**: Provision of new acquisitions: additions to the collection per capita (number of documents added to the collection in the reference year / population)
+- **IK2 (numeric, log scale)**: Document provision: size of the collection per capita (size of the collection as of 31 December of the reference year / population)
+- **IK3 (numeric, log scale)**: Proportion of digital documents in new acquisitions ((number of digital documents + e-books) / number of documents added to the collection in the reference year)
+- **ISZ1 (numeric)**: Registration fee (Y = 1, N = 0)
+- **ISZ2 (numeric)**: Home delivery (Y = 1, N = 0)
+- **ISZ3 (numeric)**: Self-service borrowing (Y = 1, N = 0)
+- **ISZ4 (numeric)**: Remote service: remote renewal (Y = 1, N = 0)
+- **ISZ5 (numeric)**: Remote service: remote payment (Y = 1, N = 0)
+- **II1 (numeric, log scale)**: Internet provision: number of internet-connected computers per capita (number of all public, networked, internet-capable computers / population)
+- **II2 (numeric)**: Are computers, workstations and mobile devices on average less than 5 years old? (Y = 1, N = 0)
+- **IH1 (numeric, log scale)**: Professional staffing: number of professionally employed staff per capita (number of staff employed in professional positions / population)
+- **IR1 (numeric, log scale)**: Event provision: number of library events per capita (number of library programmes and training sessions / population)
+
+### Output variables
+
+- **OGY1 (numeric, log scale)**: Popularity of lending: number of loans per capita (number of loans / population)
+- **OGY2 (numeric, log scale)**: Popularity of in-house use: number of in-house documents used per capita (number of in-house documents used / population)
+- **OGY3 (numeric, log scale)**: Lending activity: number of loans per registered member (number of loans / number of registered users)
+- **OA1 (numeric, log scale)**: Proportion of documents borrowed from the lendable collection (number of loans / number of items in the lendable collection)
+- **OA2 (numeric, log scale)**: Proportion of documents used in-house from the total collection (number of in-house documents used / number of items in the collection)
+- **OK1 (numeric, log scale)**: Popularity of in-person use: number of in-person visits per capita (number of in-person visits / population)
+- **OK2 (numeric, log scale)**: Popularity of remote use: number of remote use occasions per capita (number of remote use occasions / population)
+- **OKH1 (numeric, log scale)**: Proportion of registered users/readers in the population (number of registered users / population)
+- **OE1 (numeric, log scale)**: Popularity of events: number of user participations in library events per capita (number of event participants / population)
+- **OE2 (numeric, log scale)**: Attendance per event: number of participants per event (number of event participants / number of events)
+
+
+## Review the dataset structure
+
+```{r}
+glimpse(elemzes_input_output_cleaned)
+```
+
+## Summary statistics
+
+```{r}
+summary(elemzes_input_output_cleaned)
+```
+
+# PRINCIPAL COMPONENT ANALYSIS
+
+## Assess the assumptions
+
+Preliminary tests
+
+- **Bartlett's test of sphericity:**
+
+```{r}
+#install.packages("psych")
+#library(psych)  
+
+# Output variables
+vars_output <- c("OGY1", "OGY2", "OGY3", "OA1", "OA2", "OK1", "OK2", "OKH1", "OE1", "OE2")
+pca_output <- elemzes_input_output_cleaned[vars_output]
+
+bartlett_result_output <- cortest.bartlett(cor(pca_output), n = nrow(pca_output))
+print(bartlett_result_output)
+
+```
+- Kaiser-Meyer-Olkin (KMO) test:
+
+```{r}
+kmo_result_output <- KMO(cor(pca_output))
+
+print(kmo_result_output)
+
+```
+## Perform principal component analysis
+
+```{r}
+fokomp_output <- prcomp(elemzes_input_output_cleaned[,27:36], center = TRUE, scale=TRUE)
+str(fokomp_output)
+```
+```{r}
+summary(fokomp_output)
+```
+Scree plots
+
+```{r}
+#library(factoextra)
+
+# Scree plot
+fviz_eig(fokomp_output, addlabels = TRUE, ylim = c(0, 100), main = "Scree Plot of Eigenvalues")
+
+```
+
+```{r}
+# Basic scree plot with eigenvalues
+screeplot(fokomp_output, type = "lines", main = "Scree Plot")
+```
+Results
+
+```{r}
+elemzes_pca_output <- cbind(elemzes_input_output_cleaned, fokomp_output$x[,1:4])
+str(elemzes_pca_output)
+```
+
+Correlation heatmap
+```{r}
+#install.packages("dplyr")
+#library(dplyr)
+
+Korr_output <- cor(elemzes_pca_output %>%
+                   dplyr::select(27:ncol(elemzes_pca_output)) %>% 
+                   dplyr::select(-AIF50))
+
+library(corrplot)
+
+corrplot(Korr_output, method="color")
+```
+
+## Varimax rotation
+
+```{r}
+# # Perform principal component analysis 
+fokomp_output_varimax <- prcomp(elemzes_input_output_cleaned[,27:36], center = TRUE, scale = TRUE)
+
+# Apply varimax rotation to the first four principal components
+varimax_rotation_varimax <- varimax(fokomp_output_varimax$rotation[,1:4])
+
+# Create a new dataset
+varimax_output_df_varimax <- scale(elemzes_input_output_cleaned[,27:36]) %*% varimax_rotation_varimax$loadings
+
+```
+
+Results
+
+```{r}
+summary(fokomp_output_varimax)
+```
+Extract summary statistics into a table
+
+```{r}
+summary_prcomp <- summary(fokomp_output_varimax)
+
+standard_deviation <- fokomp_output_varimax$sdev
+proportion_of_variance <- summary_prcomp$importance[2, ]
+cumulative_proportion <- summary_prcomp$importance[3, ]
+
+prcomp_summary_df <- data.frame(
+  Component = seq_along(standard_deviation),
+  Standard_Deviation = standard_deviation,
+  Proportion_of_Variance = proportion_of_variance,
+  Cumulative_Proportion = cumulative_proportion
+)
+
+write.csv(prcomp_summary_df, "prcomp_summary.csv", row.names = FALSE)
+
+```
+
+```{r}
+# Append the principal component scores to the original dataset
+elemzes_pca_output_varimax <- cbind(elemzes_input_output_cleaned, varimax_output_df_varimax)
+
+```
+
+```{r}
+# Calculate the correlation matrix (excluding AIF50)
+Korr_output_varimax <- cor(elemzes_pca_output_varimax %>%
+                           dplyr::select(27:ncol(elemzes_pca_output_varimax)) %>%
+                           dplyr::select(-AIF50))
+
+# Visualise the correlation matrix after varimax rotation
+library(corrplot)
+corrplot(Korr_output_varimax, method = "color")
+
+```
+
+```{r}
+print(Korr_output_varimax)
+```
+## Principal component analysis without OK2 using varimax rotation
+
+```{r}
+# Perform principal component analysis without OK2
+fokomp_output_varimax_OK2 <- prcomp(elemzes_input_output_cleaned[,c(27:32, 34:36)], center = TRUE, scale = TRUE)
+
+# Apply varimax rotation to the first four principal components
+varimax_rotation_varimax_OK2 <- varimax(fokomp_output_varimax_OK2$rotation[,1:4])
+
+# Create a new dataset
+varimax_output_df_varimax_OK2 <- scale(elemzes_input_output_cleaned[,c(27:32, 34:36)]) %*% varimax_rotation_varimax_OK2$loadings
+
+```
+
+```{r}
+# Append the principal component scores to the original dataset
+elemzes_pca_output_varimax_OK2 <- cbind(elemzes_input_output_cleaned, varimax_output_df_varimax_OK2)
+
+```
+
+Results
+
+```{r}
+Korr_output_varimax_OK2 <- cor(
+  elemzes_pca_output_varimax_OK2[, c(27:32, 34:36, 38:41)],
+  use = "complete.obs"
+)
+
+# Visualise the correlation matrix after varimax rotation
+library(corrplot)
+corrplot(Korr_output_varimax_OK2, method = "number")
+
+
+```
+Export
+
+```{r}
+# PNG mentése 300 DPI-ben
+png("Korr_output_varimax_OK2.png", 
+    width = 22,           
+    height = 20, 
+    units = "cm", 
+    res = 300)
+
+png("Korr_output_varimax_OK2.tiff", 
+    width = 22,           
+    height = 20, 
+    units = "cm", 
+    res = 300)
+
+library(corrplot)
+corrplot(Korr_output_varimax_OK2, 
+         method = "number", 
+         number.cex = 0.7,    
+         tl.cex = 0.8,        
+         tl.col = "black",    
+         mar = c(0, 0, 1, 0)) 
+
+dev.off()
+```
+Summary
+
+```{r}
+summary(fokomp_output_varimax_OK2)
+```
+Examine the principal components using histograms
+
+```{r}
+hist(elemzes_pca_output_varimax_OK2$PC1)
+hist(elemzes_pca_output_varimax_OK2$PC2)
+hist(elemzes_pca_output_varimax_OK2$PC3)
+hist(elemzes_pca_output_varimax_OK2$PC4)
+```
+# LIBRARY DEMAND INDEX AND RANKING
+
+## Preparations
+
+```{r}
+# Reverse the sign of PC3
+elemzes_pca_output_varimax_OK2 <- elemzes_pca_output_varimax_OK2 %>%
+  mutate(PC3 = PC3 * -1)
+```
+Create histogram
+
+```{r}
+hist(elemzes_pca_output_varimax_OK2$PC3)
+
+```
+## Construct the Library Demand Index and ranking
+
+```{r}
+# 1. Standardisation
+# Standardise OK2 and all principal components (PC1, PC2, PC3 and PC4)
+elemzes_pca_output_varimax_index <- elemzes_pca_output_varimax_OK2 %>% 
+  mutate(
+    PC1_std = scale(PC1),
+    PC2_std = scale(PC2),
+    PC3_std = scale(PC3),
+    PC4_std = scale(PC4),
+    OK2_std = scale(OK2)
+  )
+
+# 2. Unweighted mean
+# Calculate the unweighted mean of all standardised components
+elemzes_pca_output_varimax_index <- elemzes_pca_output_varimax_index %>%
+  mutate(KKI = (PC1_std + PC2_std + PC3_std + PC4_std + OK2_std)/5)
+
+# 3. Ranking
+# Rank libraries based on the Library Demand Index
+elemzes_pca_output_varimax_index <- elemzes_pca_output_varimax_index %>%
+  arrange(desc(KKI)) %>%
+  mutate(KKI_rank = min_rank(desc(KKI)))
+
+# Apply min–max scaling to the Library Demand Index (0–100)
+elemzes_pca_output_varimax_index <- elemzes_pca_output_varimax_index %>%
+  mutate(KKI_100 = (KKI - min(KKI)) / (max(KKI) - min(KKI)) * 100)
+
+# Export the results
+write_xlsx(elemzes_pca_output_varimax_index, "elemzes_pca_output_varimax_index.xlsx")
+
+```
+
+## Example analysis
+
+1. Scatter plots illustrating the relationships between principal components
+
+```{r}
+KKI100_PC1_OK2 <- ggplot(elemzes_pca_output_varimax_index, aes(x = PC1_std, y = OK2_std)) +
+  geom_point(aes(color = KKI_100), size = 2.5, alpha = 0.7) +
+  scale_color_gradient(low = "blue", high = "red") +
+  
+  geom_hline(yintercept = 0, linewidth = 1) +
+  geom_vline(xintercept = 0, linewidth = 1) +
+  
+  coord_fixed() + 
+  
+  labs(
+    x = "PC1: Size of the personal user base",
+    y = "OK2: Remote use activity",
+    color = "Library Demand Index"
+  ) +
+  theme_minimal() +
+  theme(panel.grid.minor = element_blank())
+
+print(KKI100_PC1_OK2)
+
+
+ggsave("KKI100_PC1_OK2_matrix.png", 
+       plot = KKI100_PC1_OK2, 
+       width = 10, 
+       height = 8, 
+       units = "in", 
+       dpi = 300,
+       bg = "white") 
+
+ggsave("KKI100_PC1_OK2_matrix.tiff", 
+       plot = KKI100_PC1_OK2, 
+       width = 10, 
+       height = 8, 
+       units = "in", 
+       dpi = 300,
+       bg = "white") 
+
+```
+
+```{r}
+KKI100_PC2_PC3 <- ggplot(elemzes_pca_output_varimax_index, aes(x = PC2_std, y = PC3_std)) +
+  geom_point(aes(color = KKI_100), size = 2.5, alpha = 0.7) +
+  scale_color_gradient(low = "blue", high = "red") +
+  
+  # 4 részre bontás
+  geom_hline(yintercept = 0, linewidth = 1) +
+  geom_vline(xintercept = 0, linewidth = 1) +
+  
+  coord_fixed() + 
+  
+  labs(
+    x = "PC2: Lending activity",
+    y = "PC3: Demand for events",
+    color = "Library Demand Index"
+  ) +
+  theme_minimal()
+
+print(KKI100_PC2_PC3)
+
+ggsave("KKI100_PC2_PC3_matrix.png", 
+       plot = KKI100_PC2_PC3, 
+       width = 10, 
+       height = 8, 
+       units = "in", 
+       dpi = 300,
+       bg = "white") 
+
+ggsave("KKI100_PC2_PC3_matrix.tiff", 
+       plot = KKI100_PC2_PC3, 
+       width = 10, 
+       height = 8, 
+       units = "in", 
+       dpi = 300,
+       bg = "white") 
+```
+
+# MULTIPLE LINEAR REGRESSION
+
+## Review correlations
+
+Correlation matrix of the input variables and the Library Demand Index (KKI_100)
+
+```{r}
+Korr_input_output <- cor(elemzes_pca_output_varimax_index[,c(10:26, 49)], use = "complete.obs")
+
+library(corrplot)
+corrplot(Korr_input_output, method = "number")
+
+print(Korr_input_output)
+
+```
+## Perform multiple linear regression
+
+Introduce the `TelepulesIndex` variable into the analysis.
+
+```{r}
+# Import the settlement development index dataset
+telepulesindex <- read_excel("telepulesindex.xlsx")
+
+# Merge the datasets using the AAC10 variable
+elemzes_pca_output_varimax_index_ti <- elemzes_pca_output_varimax_index %>%
+  left_join(telepulesindex, by = "AAC10")
+
+# Export the merged dataset to an Excel file
+write_xlsx(elemzes_pca_output_varimax_index_ti, "elemzes_pca_output_varimax_index_ti.xlsx")
+
+# Inspect the merged dataset
+head(elemzes_pca_output_varimax_index_ti)
+
+```
+Visualizing the relationship between settlement index (TelepulesIndex) and Library Demand Index
+
+```{r}
+library(ggplot2)
+
+KKI100TI <- ggplot(elemzes_pca_output_varimax_index_ti, aes(x = TelepulesIndex, y = KKI_100)) +
+  geom_point(color = "steelblue", size = 2.5, alpha = 0.6) +
+  
+
+  geom_smooth(method = "lm", color = "black", linetype = "dashed", se = TRUE, linewidth = 0.8) +
+  
+  labs(
+    title = "Settlement development and library demand",
+    x = "TelepülésIndex",
+    y = "Library Demand Index"
+  ) +
+  theme_minimal() +
+  theme(panel.grid.minor = element_blank())
+
+print(KKI100TI)
+```
+
+Calculate the correlation matrix for the variables included in the multiple regression analysis
+
+```{r}
+# Calculate the correlation matrix (columns 10–26, 49 and 50)
+Korr_input_output_2 <- cor(elemzes_pca_output_varimax_index_ti[, c(10:26, 49, 50)], use = "complete.obs")
+
+library(corrplot)
+corrplot(Korr_input_output_2, method = "number", number.cex = 0.7)
+
+print(Korr_input_output_2)
+
+```
+
+### Fit the initial model
+
+Initial model: KKI_reg
+
+```{r}
+KKI_reg <- lm(KKI_100 ~ IP1 + IP2 + IP3 + IL1 + IL2 + IK1 + IK2 + IK3 + ISZ1 + ISZ2 + ISZ3 + ISZ4 + ISZ5 + II1 + II2 + IH1 + IR1 + log(TelepulesIndex), data = elemzes_pca_output_varimax_index_ti)
+summary(KKI_reg)
+
+#library(lmtest)
+
+# Perform the Breusch–Pagan test
+bptest(KKI_reg, studentize = TRUE)
+```
+
+Calculate variance inflation factors (VIF)
+
+```{r}
+#library(car)
+vif(KKI_reg)
+```
+Since both multicollinearity and heteroskedasticity are present, heteroskedasticity is addressed first using coefficient estimation based on the Generalized Least Squares (GLS) approach.
+
+### GLS
+
+```{r}
+# Original regression model
+KKI_reg <- lm(KKI_100 ~ IP1 + IP2 + IP3 + IL1 + IL2 + IK1 + IK2 + IK3 + 
+                ISZ1 + ISZ2 + ISZ3 + ISZ4 + ISZ5 + II1 + II2 + IH1 + IR1 + 
+                log(TelepulesIndex), data = elemzes_pca_output_varimax_index_ti)
+
+elemzes_pca_output_varimax_index_ti$HibatagNegyzet <- residuals(KKI_reg)^2
+
+tabla_white_teszt <- elemzes_pca_output_varimax_index_ti[, c("IP1", "IP2", "IP3", "IL1", "IL2", 
+                                                             "IK1", "IK2", "IK3", "ISZ1", "ISZ2", 
+                                                             "ISZ3", "ISZ4", "ISZ5", "II1", "II2", 
+                                                             "IH1", "IR1", "TelepulesIndex")]
+
+tabla_white_teszt$HibatagNegyzet <- elemzes_pca_output_varimax_index_ti$HibatagNegyzet
+
+negyzetek <- tabla_white_teszt[, 1:(ncol(tabla_white_teszt) - 1)]^2
+colnames(negyzetek) <- paste0(colnames(tabla_white_teszt)[1:(ncol(tabla_white_teszt) - 1)], "_negyzete")
+tabla_white_teszt <- cbind(tabla_white_teszt, negyzetek)
+
+seged_reg_gls <- lm(log(HibatagNegyzet) ~ ., data = tabla_white_teszt)
+
+omega_elemek <- exp(fitted(seged_reg_gls))
+
+# Fit the weighted regression model
+KKI_reg_gls <- lm(KKI_100 ~ IP1 + IP2 + IP3 + IL1 + IL2 + IK1 + IK2 + IK3 + 
+                       ISZ1 + ISZ2 + ISZ3 + ISZ4 + ISZ5 + II1 + II2 + IH1 + IR1 + 
+                       log(TelepulesIndex), weights = 1/omega_elemek, 
+                     data = elemzes_pca_output_varimax_index_ti)
+
+summary(KKI_reg_gls)
+
+```
+
+```{r}
+# Perform the Breusch–Pagan test
+bptest(KKI_reg_gls, studentize = TRUE)
+```
+### Stepwise variable selection
+
+```{r}
+step_model <- stepAIC(KKI_reg_gls, direction = "both")
+
+summary(step_model)
+```
+
+Save the results
+
+```{r}
+#library(MASS)
+
+get_significant_vars <- function(model) {
+  coef_table <- summary(model)$coefficients
+  significant_vars <- rownames(coef_table)[coef_table[, 4] < 0.05]  
+  significant_count <- length(significant_vars)                     
+  list(names = significant_vars, count = significant_count)
+}
+
+initial_summary <- summary(KKI_reg_gls)
+initial_aic <- AIC(KKI_reg_gls)
+initial_bic <- BIC(KKI_reg_gls)
+initial_r2 <- initial_summary$r.squared
+initial_adj_r2 <- initial_summary$adj.r.squared
+initial_df <- length(KKI_reg_gls$coefficients)
+initial_significant <- get_significant_vars(KKI_reg_gls)  
+initial_total_vars <- length(initial_summary$coefficients[, 1])  
+
+final_summary <- summary(step_model)
+final_aic <- AIC(step_model)
+final_bic <- BIC(step_model)
+final_r2 <- final_summary$r.squared
+final_adj_r2 <- final_summary$adj.r.squared
+final_df <- length(step_model$coefficients)
+final_significant <- get_significant_vars(step_model)  
+final_total_vars <- length(final_summary$coefficients[, 1])  
+
+model_comparison <- data.frame(
+  Mutató = c("AIC", "BIC", "R²", "Adjusted R²", "Degrees of freedom",
+                "Number of significant variables",
+                "Significant variables"),
+  `Kezdeti modell` = c(
+    initial_aic, initial_bic, initial_r2, initial_adj_r2, initial_df,
+    paste(initial_significant$count, "/", initial_total_vars),
+    paste(initial_significant$names, collapse = ", ")
+  ),
+  `Végső modell` = c(
+    final_aic, final_bic, final_r2, final_adj_r2, final_df,
+    paste(final_significant$count, "/", final_total_vars),
+    paste(final_significant$names, collapse = ", ")
+  )
+)
+
+transposed_table <- t(model_comparison)
+
+write_xlsx(as.data.frame(transposed_table), path = "transzponalt_modell_osszehasonlitas.xlsx")
+
+print(model_comparison)
+
+```
+
+## Model building
+
+```{r}
+KKI_reg0 <- lm(KKI_100 ~ IP2 + IP3 + IK1 + IK3 + ISZ1 + ISZ5 + 
+    II1 + IH1 + IR1 + log(TelepulesIndex), data = elemzes_pca_output_varimax_index_ti, 
+    weights = 1/omega_elemek)
+summary(KKI_reg0)
+```
+Calculate variance inflation factors (VIF)
+
+```{r}
+vif(KKI_reg0)
+```
+Replace IP2 with IP1
+
+```{r}
+KKI_reg1 <- lm(KKI_100 ~ IP1 + IP3 + IK1 + IK3 + ISZ1 + ISZ5 + 
+    II1 + IH1 + IR1 + log(TelepulesIndex), data = elemzes_pca_output_varimax_index_ti, 
+    weights = 1/omega_elemek)
+summary(KKI_reg1)
+
+```
+Calculate variance inflation factors (VIF)
+
+```{r}
+vif(KKI_reg1)
+```
+Multicollinearity has not decreased.
+
+
+Remove II1 because p-value > 0.05
+
+```{r}
+KKI_reg2 <- lm(KKI_100 ~ IP1 + IP3 + IK1 + IK3 + ISZ1 + ISZ5 + 
+    IH1 + IR1 + log(TelepulesIndex), data = elemzes_pca_output_varimax_index_ti, 
+    weights = 1/omega_elemek)
+summary(KKI_reg2)
+```
+IP2 + IP3
+
+```{r}
+KKI_reg3 <- lm(KKI_100 ~ IP1 + IP2 + IK1 + IK3 + ISZ1 + ISZ5 + 
+    IH1 + IR1 + log(TelepulesIndex), data = elemzes_pca_output_varimax_index_ti, 
+    weights = 1/omega_elemek)
+summary(KKI_reg3)
+```
+Retain only IP3
+
+```{r}
+KKI_reg4 <- lm(KKI_100 ~ IP3 + IK1 + IK3 + ISZ1 + ISZ5 + 
+    IH1 + IR1 + log(TelepulesIndex), data = elemzes_pca_output_varimax_index_ti, 
+    weights = 1/omega_elemek)
+summary(KKI_reg4)
+```
+Remove ISZ5
+
+```{r}
+KKI_reg5 <- lm(KKI_100 ~ IP3 + IK1 + IK3 + ISZ1 + 
+    IH1 + IR1 + log(TelepulesIndex), data = elemzes_pca_output_varimax_index_ti, 
+    weights = 1/omega_elemek)
+summary(KKI_reg5)
+```
+Calculate variance inflation factors (VIF)
+
+```{r}
+vif(KKI_reg5)
+```
+
+
+```{r}
+KKI_reg6 <- lm(KKI_100 ~ IP3 + ISZ1 + IK3 +
+    IH1 + IR1 + log(TelepulesIndex), data = elemzes_pca_output_varimax_index_ti, 
+    weights = 1/omega_elemek)
+summary(KKI_reg6)
+```
+Calculate variance inflation factors (VIF)
+
+```{r}
+vif(KKI_reg6)
+```
+VIF values have decreased.
+
+```{r}
+KKI_reg7 <- lm(KKI_100 ~ IP1 + IK3 + ISZ1 + 
+    IH1 + IR1 + log(TelepulesIndex), data = elemzes_pca_output_varimax_index_ti, 
+    weights = 1/omega_elemek)
+summary(KKI_reg7)
+```
+Calculate variance inflation factors (VIF)
+
+```{r}
+vif(KKI_reg7)
+```
+The VIF values are acceptable. Multicollinearity is no longer present.
+
+RESET test for both models
+
+```{r}
+resettest(KKI_reg6)
+resettest(KKI_reg7)
+```
+Breusch-Pagan test for both models
+
+```{r}
+bptest(KKI_reg6, studentize = TRUE)
+bptest(KKI_reg7, studentize = TRUE)
+```
+## Model comparison
+
+```{r}
+AIC(KKI_reg6, KKI_reg7)
+BIC(KKI_reg6, KKI_reg7)
+```
+AIC: reg6
+BIC: reg6
+
+Save the results of the final selected model (REG6)
+
+```{r}
+BetaTabla_reg6 <- summary(KKI_reg6)$coefficients
+
+# Sort the table by p-values (column 4)
+BetaTabla_reg6[order(BetaTabla_reg6[,4]),]
+
+
+```
+### Model diagnostics
+
+```{r}
+#install.packages("performance")
+library(performance)
+check_model(KKI_reg6, check = "all")
+png("KKI_reg6_Model_diagnostics.png",
+    width = 3000,
+    height = 2400,
+    res = 300)
+check_model(KKI_reg6, check = "all")
+dev.off()
+
+tiff("KKI_reg6_Model_diagnostics.tiff",
+     width = 3000,
+     height = 2400,
+     res = 300,
+     compression = "lzw")
+check_model(KKI_reg6, check = "all")
+dev.off()
+```
+
+```{r}
+residuals <- residuals(KKI_reg6)
+
+# QQ plot for assessing the normality of the residuals
+qqnorm(residuals, main = "QQ Plot of Residuals")
+qqline(residuals, col = "red", lwd = 2)
+
+# Histogram
+hist(residuals, breaks = 30, main = "Histogram of Residuals", xlab = "Residuals", col = "lightblue", border = "black")
+
+# Shapiro–Wilk test for normality
+shapiro_test <- shapiro.test(residuals)
+print("Shapiro-Wilk test results:")
+print(shapiro_test)
+
+# Kolmogorov–Smirnov test for normality
+ks_test <- ks.test(residuals, "pnorm", mean = mean(residuals), sd = sd(residuals))
+print("Kolmogorov-Smirnov test results:")
+print(ks_test)
+
+# Diagnostic visualisation
+par(mfrow = c(1, 2))  
+qqnorm(residuals, main = "QQ-Plot")
+qqline(residuals, col = "red")
+hist(residuals, breaks = 30, main = "Histogram", xlab = "Residuals", col = "lightblue", border = "black")
+
+```
+
+Export the REG6 model results to an Excel file
+
+```{r}
+reg6_modell_eredmenyek <- as.data.frame(summary(KKI_reg6)$coefficients)
+
+write_xlsx(reg6_modell_eredmenyek, "reg6_modell_eredmenyek.xlsx")
+```
+
+
+
